@@ -338,8 +338,11 @@
     color: var(--text-secondary);
     letter-spacing: 0.05em;
   }
-  .limit-row.warn .limit-time { color: var(--coral); }
-  .limit-row.over { border-color: rgba(217,96,64,0.4); }
+  .limit-row.over {
+    border-color: rgba(217,96,64,0.5);
+    background: rgba(217,96,64,0.10);
+  }
+  .limit-row.over .limit-name { color: var(--coral); }
   .limit-row.over .limit-time { color: var(--coral); }
   .limit-row.over .limit-remain { color: var(--coral); }
 
@@ -418,7 +421,7 @@
 
     <div class="mode-tabs">
       <button class="mode-tab active" id="tab-normal" onclick="switchMode('normal')">通常(現場往復)</button>
-      <button class="mode-tab" id="tab-jitan" onclick="switchMode('jitan')">ジタン(現場→搬送)</button>
+      <button class="mode-tab" id="tab-jturn" onclick="switchMode('jturn')">Jターン(現場→搬送)</button>
     </div>
 
     <!-- 通常モード: 基地 → 現場 → 基地 -->
@@ -465,8 +468,8 @@
       <div class="calc-note" id="n-note">日没 − 5分 − (往路 + 現場滞在 + 復路) = 離陸リミット</div>
     </div>
 
-    <!-- ジタンモード: 基地 → 現場 → 搬送先病院 → 基地 -->
-    <div id="mode-jitan" style="display:none">
+    <!-- Jターンモード: 基地 → 現場 → 搬送先病院 → 基地 -->
+    <div id="mode-jturn" style="display:none">
       <div class="input-grid">
         <div class="input-field">
           <label for="j-leg1">① 基地 → 現場</label>
@@ -610,9 +613,9 @@
 
   function switchMode(mode) {
     document.getElementById('mode-normal').style.display = (mode === 'normal') ? '' : 'none';
-    document.getElementById('mode-jitan').style.display = (mode === 'jitan') ? '' : 'none';
+    document.getElementById('mode-jturn').style.display = (mode === 'jturn') ? '' : 'none';
     document.getElementById('tab-normal').className = 'mode-tab' + (mode === 'normal' ? ' active' : '');
-    document.getElementById('tab-jitan').className = 'mode-tab' + (mode === 'jitan' ? ' active' : '');
+    document.getElementById('tab-jturn').className = 'mode-tab' + (mode === 'jturn' ? ' active' : '');
     recalcLimits();
   }
 
@@ -651,7 +654,7 @@
       const m = Math.floor((diff % 3600000) / 60000);
       const s = Math.floor((diff % 60000) / 1000);
       remainEl.textContent = 'あと ' + (h > 0 ? h + ':' + pad(m) + ':' + pad(s) : pad(m) + ':' + pad(s));
-      row.className = 'limit-row' + (diff < 10 * 60000 ? ' warn' : '');
+      row.className = 'limit-row';
     } else {
       remainEl.textContent = 'リミット超過';
       row.className = 'limit-row over';
@@ -672,7 +675,7 @@
       (deadline !== null && nRet !== null) ? deadline - nRet * 60000 : null,
       deadline !== null && nRet !== null);
 
-    // ジタンモード: 基地→現場→搬送先病院→基地
+    // Jターンモード: 基地→現場→搬送先病院→基地
     const l1 = minVal('j-leg1');
     const l2 = minVal('j-leg2');
     const l3 = minVal('j-leg3');
