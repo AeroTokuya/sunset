@@ -20,6 +20,11 @@
     --amber-mid: rgba(232,160,64,0.35);
     --coral: #d96040;
     --sky: #5ba8d4;
+    --sky-dim: rgba(91,168,212,0.12);
+    --sky-mid: rgba(91,168,212,0.45);
+    --green: #6fce8f;
+    --green-dim: rgba(111,206,143,0.08);
+    --green-mid: rgba(111,206,143,0.4);
   }
 
   body {
@@ -249,20 +254,24 @@
   }
   .mode-tab {
     font-family: 'Noto Sans JP', sans-serif;
-    font-size: 12px;
-    font-weight: 400;
-    padding: 8px 4px;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 10px 4px;
     border-radius: 10px;
-    border: 1px solid var(--border);
-    background: rgba(255,255,255,0.03);
-    color: var(--text-secondary);
+    border: 1px solid var(--sky-mid);
+    background: var(--sky-dim);
+    color: var(--sky);
     cursor: pointer;
     letter-spacing: 0.05em;
+    opacity: 0.55;
+    transition: opacity 0.15s ease, box-shadow 0.15s ease;
   }
   .mode-tab.active {
-    border-color: var(--amber-mid);
-    background: var(--amber-dim);
-    color: var(--amber);
+    border-color: var(--sky);
+    background: rgba(91,168,212,0.22);
+    color: #d8edfa;
+    opacity: 1;
+    box-shadow: 0 0 12px rgba(91,168,212,0.25);
   }
 
   .input-grid {
@@ -274,17 +283,22 @@
   .input-field { display: flex; flex-direction: column; }
   .input-field label {
     font-size: 10px;
-    color: var(--text-secondary);
+    color: var(--green);
     letter-spacing: 0.06em;
     margin-bottom: 4px;
   }
   .input-field .input-wrap {
     display: flex;
     align-items: center;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid var(--border);
+    background: var(--green-dim);
+    border: 1.5px solid var(--green-mid);
     border-radius: 10px;
     padding: 0 10px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .input-field .input-wrap:focus-within {
+    border-color: var(--green);
+    box-shadow: 0 0 0 2px rgba(111,206,143,0.2);
   }
   .input-field input {
     width: 100%;
@@ -303,10 +317,14 @@
   .input-field input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .input-field .unit {
     font-size: 10px;
-    color: var(--text-secondary);
+    color: var(--green);
+    opacity: 0.7;
     font-family: 'DM Mono', monospace;
     margin-left: 6px;
     white-space: nowrap;
+  }
+  .input-field input::placeholder {
+    color: rgba(111,206,143,0.35);
   }
 
   .limit-list { display: flex; flex-direction: column; gap: 8px; }
@@ -420,11 +438,11 @@
     </div>
 
     <div class="mode-tabs">
-      <button class="mode-tab active" id="tab-normal" onclick="switchMode('normal')">通常(現場往復)</button>
+      <button class="mode-tab active" id="tab-normal" onclick="switchMode('normal')">Uターン(現場往復)</button>
       <button class="mode-tab" id="tab-jturn" onclick="switchMode('jturn')">Jターン(現場→搬送)</button>
     </div>
 
-    <!-- 通常モード: 基地 → 現場 → 基地 -->
+    <!-- Uターンモード: 基地 → 現場 → 基地 -->
     <div id="mode-normal">
       <div class="input-grid">
         <div class="input-field">
@@ -664,7 +682,7 @@
   function recalcLimits() {
     const deadline = sunsetTs ? sunsetTs - RETURN_BUFFER_MIN * 60000 : null;
 
-    // 通常モード: 基地→現場→基地
+    // Uターンモード: 基地→現場→基地
     const nOut = minVal('n-outbound');
     const nRet = minVal('n-return');
     const nStay = minVal('n-stay');
