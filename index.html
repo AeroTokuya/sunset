@@ -226,6 +226,37 @@
     letter-spacing: 0.02em;
   }
 
+  /* 位置情報ステータス */
+  .loc-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0.55rem 1.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 10px;
+  }
+  .loc-status {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.03em;
+  }
+  .loc-status.warn { color: var(--coral); }
+  .loc-retry {
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    padding: 4px 14px;
+    border-radius: 100px;
+    border: 1px solid var(--sky-mid);
+    background: var(--sky-dim);
+    color: var(--sky);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
   /* フッター */
   .footer {
     text-align: center;
@@ -392,6 +423,12 @@
     <span class="current-time-val" id="current-time">--:--:--</span>
   </div>
 
+  <!-- 位置情報ステータス -->
+  <div class="loc-row">
+    <span class="loc-status" id="loc-status">位置情報: 取得中…</span>
+    <button class="loc-retry" onclick="requestLocation()">再取得</button>
+  </div>
+
   <!-- メインカード -->
   <div class="card">
     <div class="card-header">
@@ -552,7 +589,7 @@
     </div>
   </div>
 
-  <div class="footer">Open-Meteo API &nbsp;·&nbsp; 位置情報: ブラウザ自動取得 &nbsp;·&nbsp; 毎秒更新</div>
+  <div class="footer">Open-Meteo API &nbsp;·&nbsp; 毎秒更新</div>
 </div>
 
 <script>
@@ -729,18 +766,87 @@
       recalcLimits();
     } catch(e) {
       document.getElementById('sunset-time').textContent = 'ERR';
+      setLocStatus('日没時刻の取得に失敗。再取得を押してください', true);
     }
   }
 
-  function init() {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        pos => fetchData(pos.coords.latitude, pos.coords.longitude),
-        ()   => fetchData(34.6937, 135.5022) // 大阪フォールバック
-      );
+  /* ===== 位置情報の取得(タイムアウト・キャッシュ・フォールバック付き) ===== */
+  const OSAKA = { lat: 34.6937, lon: 135.5022 };
+  const GEO_TIMEOUT_MS = 10000;   // getCurrentPositionに渡すタイムアウト
+  const GEO_WATCHDOG_MS = 12000;  // ダイアログ無視等でコールバック自体が来ない場合の保険
+  const COORD_CACHE_KEY = 'sunset_last_coords';
+
+  let locAttempt = 0;
+
+  function setLocStatus(text, warn) {
+    const el = document.getElementById('loc-status');
+    el.textContent = '位置情報: ' + text;
+    el.className = 'loc-status' + (warn ? ' warn' : '');
+  }
+
+  function loadCachedCoords() {
+    try {
+      const c = JSON.parse(localStorage.getItem(COORD_CACHE_KEY) || 'null');
+      if (c && isFinite(c.lat) && isFinite(c.lon)) return c;
+    } catch(e) {}
+    return null;
+  }
+
+  function useFallback(reason) {
+    const cached = loadCachedCoords();
+    if (cached) {
+      fetchData(cached.lat, cached.lon);
+      setLocStatus('前回の位置で計算中(' + reason + ')', true);
     } else {
-      fetchData(34.6937, 135.5022);
+      fetchData(OSAKA.lat, OSAKA.lon);
+      setLocStatus('大阪で概算中(' + reason + ')', true);
     }
+  }
+
+  function requestLocation() {
+    const attempt = ++locAttempt;
+    let settled = false;
+
+    if (!navigator.geolocation) {
+      useFallback('この端末では位置情報が使えません');
+      return;
+    }
+    setLocStatus((sunsetTs || loadCachedCoords()) ? '現在地を取得中…(暫定値で計算中)' : '取得中…');
+
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        if (settled || attempt !== locAttempt) return;
+        settled = true;
+        const c = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        try { localStorage.setItem(COORD_CACHE_KEY, JSON.stringify(c)); } catch(e) {}
+        fetchData(c.lat, c.lon);
+        setLocStatus('現在地を使用中');
+      },
+      err => {
+        if (settled || attempt !== locAttempt) return;
+        settled = true;
+        useFallback(err.code === 1 ? 'ブラウザで許可されていません' : '取得に失敗');
+      },
+      { timeout: GEO_TIMEOUT_MS, maximumAge: 300000 }
+    );
+
+    // 許可ダイアログが無視された等で成功も失敗も返らないケースへの保険
+    setTimeout(() => {
+      if (!settled && attempt === locAttempt) {
+        settled = true;
+        useFallback('応答なし');
+      }
+    }, GEO_WATCHDOG_MS);
+  }
+
+  function init() {
+    // まずキャッシュ位置で即計算できる状態にし、現在地が取れ次第上書きする
+    const cached = loadCachedCoords();
+    if (cached) {
+      fetchData(cached.lat, cached.lon);
+      setLocStatus('前回の位置で表示中。現在地を取得中…');
+    }
+    requestLocation();
   }
 
   init();
