@@ -229,27 +229,60 @@
   /* 位置情報ステータス */
   .loc-row {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
     gap: 8px;
-    padding: 0.55rem 1.25rem;
+    padding: 0.7rem 1rem;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
     margin-bottom: 10px;
   }
+  .loc-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .loc-select {
+    flex: 1;
+    min-width: 0;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text-primary);
+    background: var(--sky-dim);
+    border: 1px solid var(--sky-mid);
+    border-radius: 10px;
+    padding: 9px 34px 9px 12px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    /* 右端のドロップダウン矢印(sky色) */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%235ba8d4' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+  }
+  .loc-select:focus-visible {
+    outline: none;
+    border-color: var(--sky);
+    box-shadow: 0 0 0 2px rgba(91,168,212,0.25);
+  }
+  .loc-select option { color: #111; }
+  .loc-select optgroup { color: #111; }
   .loc-status {
     font-size: 11px;
     color: var(--text-secondary);
     font-family: 'DM Mono', monospace;
     letter-spacing: 0.03em;
+    padding: 0 2px;
   }
   .loc-status.warn { color: var(--coral); }
+  .loc-status.base { color: var(--sky); }
   .loc-retry {
     font-family: 'Noto Sans JP', sans-serif;
     font-size: 11px;
-    padding: 4px 14px;
-    border-radius: 100px;
+    padding: 8px 14px;
+    border-radius: 10px;
     border: 1px solid var(--sky-mid);
     background: var(--sky-dim);
     color: var(--sky);
@@ -425,8 +458,14 @@
 
   <!-- 位置情報ステータス -->
   <div class="loc-row">
+    <div class="loc-controls">
+      <select class="loc-select" id="loc-select" aria-label="計算に使う位置" onchange="onLocSelectChange()">
+        <option value="gps">現在地（GPS）</option>
+        <optgroup label="ドクターヘリ基地病院" id="loc-optgroup"></optgroup>
+      </select>
+      <button class="loc-retry" onclick="onLocRetry()">再取得</button>
+    </div>
     <span class="loc-status" id="loc-status">位置情報: 取得中…</span>
-    <button class="loc-retry" onclick="requestLocation()">再取得</button>
   </div>
 
   <!-- メインカード -->
@@ -775,13 +814,33 @@
   const GEO_TIMEOUT_MS = 10000;   // getCurrentPositionに渡すタイムアウト
   const GEO_WATCHDOG_MS = 12000;  // ダイアログ無視等でコールバック自体が来ない場合の保険
   const COORD_CACHE_KEY = 'sunset_last_coords';
+  const LOC_MODE_KEY = 'sunset_loc_mode';  // 'gps' または 基地インデックス(文字列)
 
-  let locAttempt = 0;
+  // ドクターヘリ基地病院(座標はWGS84・施設代表点)。茨城のみ県庁座標。
+  const BASES = [
+    { region: '旭川',        name: '旭川赤十字病院',              lat: 43.7695, lon: 142.3484 },
+    { region: '秋田',        name: '秋田赤十字病院',              lat: 39.6870, lon: 140.1531 },
+    { region: '千葉北総',    name: '日本医科大学千葉北総病院',    lat: 35.7808, lon: 140.1985 },
+    { region: '千葉(君津)',  name: '君津中央病院',                lat: 35.3602, lon: 139.9242 },
+    { region: '茨城',        name: '茨城県庁',                    lat: 36.3375, lon: 140.4486 },
+    { region: '群馬',        name: '前橋赤十字病院',              lat: 36.3588, lon: 139.0951 },
+    { region: '埼玉',        name: '埼玉医科大学総合医療センター', lat: 35.9346, lon: 139.5195 },
+    { region: '神奈川',      name: '東海大学医学部付属病院',      lat: 35.4068, lon: 139.3152 },
+    { region: '大阪',        name: '大阪大学医学部附属病院',      lat: 34.8193, lon: 135.5284 },
+    { region: '山口',        name: '山口大学医学部附属病院',      lat: 33.9598, lon: 131.2493 }
+  ];
 
-  function setLocStatus(text, warn) {
+  let locAttempt = 0;      // 進行中のGPS取得を無効化するための世代カウンタ
+  let locMode = 'gps';     // 現在の選択('gps' または 基地インデックス数値)
+
+  function setLocStatus(text, kind) {
     const el = document.getElementById('loc-status');
     el.textContent = '位置情報: ' + text;
-    el.className = 'loc-status' + (warn ? ' warn' : '');
+    // kind: 'base'=拠点選択中(青), 'warn'またはtrue=警告(赤), それ以外=通常
+    let cls = 'loc-status';
+    if (kind === 'base') cls += ' base';
+    else if (kind) cls += ' warn';
+    el.className = cls;
   }
 
   function loadCachedCoords() {
@@ -839,8 +898,63 @@
     }, GEO_WATCHDOG_MS);
   }
 
+  /* ===== 拠点(基地病院)の選択 ===== */
+  // プルダウンに基地病院の選択肢を生成
+  function buildLocOptions() {
+    const grp = document.getElementById('loc-optgroup');
+    BASES.forEach((b, i) => {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = b.region + ' / ' + b.name;
+      grp.appendChild(opt);
+    });
+  }
+
+  // 選択された基地病院の座標で日没を計算(進行中のGPS取得は無効化)
+  function selectBase(i) {
+    locMode = i;
+    locAttempt++; // 進行中のGPSコールバックを無効化
+    const b = BASES[i];
+    fetchData(b.lat, b.lon);
+    setLocStatus('拠点: ' + b.region + ' ' + b.name, 'base');
+  }
+
+  // プルダウン変更時
+  function onLocSelectChange() {
+    const v = document.getElementById('loc-select').value;
+    try { localStorage.setItem(LOC_MODE_KEY, v); } catch(e) {}
+    if (v === 'gps') {
+      locMode = 'gps';
+      requestLocation();
+    } else {
+      selectBase(parseInt(v, 10));
+    }
+  }
+
+  // 再取得ボタン: GPSなら位置取得やり直し、拠点なら日没を再取得(日付変更対策)
+  function onLocRetry() {
+    if (locMode === 'gps') requestLocation();
+    else selectBase(locMode);
+  }
+
   function init() {
-    // まずキャッシュ位置で即計算できる状態にし、現在地が取れ次第上書きする
+    buildLocOptions();
+
+    // 保存された選択を復元
+    let saved = null;
+    try { saved = localStorage.getItem(LOC_MODE_KEY); } catch(e) {}
+    const savedIdx = saved != null && saved !== 'gps' ? parseInt(saved, 10) : NaN;
+
+    if (isFinite(savedIdx) && savedIdx >= 0 && savedIdx < BASES.length) {
+      // 前回、基地病院を選んでいた
+      document.getElementById('loc-select').value = String(savedIdx);
+      selectBase(savedIdx);
+      return;
+    }
+
+    // 現在地(GPS)モード。まずキャッシュ位置で即計算し、現在地が取れ次第上書き
+    document.getElementById('loc-select').value = 'gps';
+    locMode = 'gps';
     const cached = loadCachedCoords();
     if (cached) {
       fetchData(cached.lat, cached.lon);
