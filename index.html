@@ -787,7 +787,9 @@
   }
 
   async function fetchData(lat, lon) {
-    const today = new Date().toISOString().slice(0, 10);
+    // toISOString()はUTC日付になり、JSTの0時〜9時に前日の日没を取得してしまうためローカル日付を使う
+    const now = new Date();
+    const today = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=sunrise,sunset&timezone=auto&start_date=${today}&end_date=${today}`;
     try {
       const res = await fetch(url);
